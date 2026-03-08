@@ -17,14 +17,17 @@ import { z } from "zod"
 import { useWebRTC } from "@/hooks/useWebRTC"
 
 // Helper component to reliably bind remote MediaStreams to a video element
-function RemoteVideo({ stream, className }: { stream: MediaStream; className?: string }) {
+function RemoteVideo({ stream, className, userId }: { stream: MediaStream; className?: string; userId?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (videoRef.current && stream) {
+      console.log(`[UI] Binding stream to video element for user: ${userId}. Tracks: ${stream.getTracks().length}`);
       videoRef.current.srcObject = stream;
+    } else {
+      console.warn(`[UI] Missing videoRef or stream for user: ${userId}`);
     }
-  }, [stream]);
+  }, [stream, userId]);
 
   return (
     <video
@@ -490,6 +493,7 @@ export default function RoomsPage() {
               {remoteUsers.map((remoteUser) => (
                 <div key={remoteUser.userId} className="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-card/30 backdrop-blur-sm border border-border/50">
                   <RemoteVideo
+                    userId={remoteUser.userId}
                     stream={remoteUser.stream}
                     className="h-full w-full object-cover"
                   />
