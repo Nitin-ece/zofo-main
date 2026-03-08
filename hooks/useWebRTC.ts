@@ -3,6 +3,16 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
 
+// Global socket connection to Railway
+const SIGNALING_SERVER_URL = "https://zofo-main-production.up.railway.app";
+export const socket = io(SIGNALING_SERVER_URL, {
+  path: "/api/socket/io",
+  transports: ["websocket"],
+  reconnection: true,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 1000
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,8 +122,8 @@ export function useWebRTC(
     // ─────────────────────────────────────────────────────────────────────────
     const sendSignal = useCallback(
         (type: string, targetId: string | null, data: unknown) => {
-            if (!socketRef.current || !userId || !userName || !roomId) return;
-            socketRef.current.emit("webrtc-signal", {
+            if (!socket.connected || !userId || !userName || !roomId) return;
+            socket.emit("webrtc-signal", {
                 roomId,
                 type,
                 senderId: userId,
@@ -285,7 +295,7 @@ export function useWebRTC(
             mediaReadyRef.current = true;
 
             // Now safe to announce presence — existing peers will initiate offers
-            if (socketRef.current?.connected) {
+            if (socket.connected) {
                 sendSignal("peer-joined", null, { userName });
             }
         } catch (err) {
@@ -305,7 +315,7 @@ export function useWebRTC(
     // ─────────────────────────────────────────────────────────────────────────
     const stopMedia = useCallback(() => {
         // Announce departure to room peers
-        if (socketRef.current?.connected && userId) {
+        if (socket.connected && userId) {
             sendSignal("peer-left", null, null);
         }
 
@@ -323,11 +333,8 @@ export function useWebRTC(
         hasRemoteDescRef.current.clear();
         pendingCandidatesRef.current.clear();
 
-        // Remove socket connection
-        if (socketRef.current) {
-            socketRef.current.disconnect();
-            socketRef.current = null;
-        }
+        // We DO NOT disconnect the global socket connection
+        socket.emit("leave-room", roomId);
 
         if (mountedRef.current) {
             setLocalStream(null);
@@ -376,37 +383,31 @@ export function useWebRTC(
          */
         const shouldBeOfferer = (peerId: string) => userId < peerId;
 
-        // Initialize socket.io connection pointing to our custom Next.js API route
         const initSocket = async () => {
-            // Ping the Next.js API route once so it boots up the socket IO server 
-            await fetch("/api/socket/io");
-
             if (!mountedRef.current) return;
 
-            const socket = io({
-                path: "/api/socket/io",
-                addTrailingSlash: false,
-            });
+            // Ensure the socket is connected
+            if (!socket.connected) {
+                socket.connect();
+            }
 
-            socketRef.current = socket;
+            // We no longer need to check if the socket connected here as a state hook,
+            // we attach to the existing global instance.
+            console.log("[WebRTC] Socket signaling attached");
+            socket.emit("join-room", roomId);
 
-            socket.on("connect", () => {
-                console.log("[WebRTC] Socket signaling connected");
-                socket.emit("join-room", roomId);
+            if (mediaReadyRef.current) {
+                sendSignal("peer-joined", null, { userName });
+            }
 
-                if (mediaReadyRef.current) {
-                    sendSignal("peer-joined", null, { userName });
-                }
-            });
-
-            socket.on("connect_error", (err: Error) => {
+            const onConnectError = (err: Error) => {
                 console.error("[WebRTC] Socket connect error:", err);
                 if (mountedRef.current) {
                     setError("Signaling connection lost. Please leave and rejoin the room (Socket Error).");
                 }
-            });
+            };
 
-            socket.on("webrtc-signal", async (payload: any) => {
+            const onSignal = async (payload: any) => {
                 if (!mountedRef.current) return;
 
                 const { type, senderId, senderName, targetId, data } = payload;
@@ -498,10 +499,21 @@ export function useWebRTC(
                         if (peersRef.current.size === 0) setIsWaiting(true);
                     }
                 }
-            });
+            };
+
+            // Register event listeners on the global socket
+            socket.on("connect_error", onConnectError);
+            socket.on("webrtc-signal", onSignal);
+
+            // Return a cleanup function for the event listeners specifically
+            return () => {
+                socket.off("connect_error", onConnectError);
+                socket.off("webrtc-signal", onSignal);
+            };
         };
 
-        initSocket();
+        let cleanupSocketHandlers: (() => void) | undefined;
+        initSocket().then(cleanup => cleanupSocketHandlers = cleanup);
 
         return () => {
             mountedRef.current = false;
@@ -510,10 +522,9 @@ export function useWebRTC(
             hasRemoteDescRef.current.clear();
             pendingCandidatesRef.current.clear();
 
-            if (socketRef.current) {
-                socketRef.current.disconnect();
-                socketRef.current = null;
-            }
+            // Only remove the event handlers, do not disconnect the global socket connection
+            if (cleanupSocketHandlers) cleanupSocketHandlers();
+            socket.emit("leave-room", roomId);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, userId, userName, createPeerConnection, flushPendingCandidates, sendSignal]);
