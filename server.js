@@ -24,8 +24,6 @@ app.prepare().then(() => {
     });
 
     const io = new Server(server, {
-        path: '/api/socket/io',
-        addTrailingSlash: false,
         cors: {
             origin: "*",
             methods: ["GET", "POST"]
