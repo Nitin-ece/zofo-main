@@ -6,7 +6,6 @@ import { io, type Socket } from "socket.io-client";
 // Global socket connection to Railway
 const SIGNALING_SERVER_URL = "https://zofo-main-production.up.railway.app";
 export const socket = io(SIGNALING_SERVER_URL, {
-  path: "/api/socket/io",
   transports: ["websocket"],
   reconnection: true,
   reconnectionAttempts: 10,
