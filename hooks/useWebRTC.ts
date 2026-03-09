@@ -587,8 +587,6 @@ export function useWebRTC(
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, userId, userName, createPeerConnection, flushPendingCandidates, sendSignal]);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [roomId, userId, userName, createPeerConnection, flushPendingCandidates, sendSignal]);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Return public API
