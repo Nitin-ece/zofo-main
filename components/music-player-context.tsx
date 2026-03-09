@@ -9,21 +9,38 @@ export interface Track {
     duration?: number
 }
 
+export interface Playlist {
+    id: string
+    name: string
+    tracks?: Track[]
+}
+
+export type RepeatMode = "none" | "one" | "all"
+
 interface MusicPlayerContextType {
     tracks: Track[]
+    playlists: Playlist[]
     currentTrack: Track | null
+    currentPlaylist: Playlist | null
     isPlaying: boolean
     currentTime: number
     duration: number
     volume: number
+    shuffle: boolean
+    repeatMode: RepeatMode
+    isLoading: boolean
     addTracks: (newTracks: Track[]) => void
     removeTrack: (id: string) => void
-    playTrack: (track: Track) => void
+    playTrack: (track: Track, fromPlaylist?: Playlist | null) => void
     togglePlay: () => void
     nextTrack: () => void
     prevTrack: () => void
     setVolume: (v: number) => void
     seekTo: (time: number) => void
+    toggleShuffle: () => void
+    setRepeatMode: (mode: RepeatMode) => void
+    setPlaylists: (playlists: Playlist[]) => void
+    playPlaylist: (playlistId: string) => Promise<void>
     audioRef: React.RefObject<HTMLAudioElement | null>
 }
 
@@ -31,11 +48,16 @@ const MusicPlayerContext = createContext<MusicPlayerContextType | null>(null)
 
 export function MusicPlayerProvider({ children }: { children: React.ReactNode }) {
     const [tracks, setTracks] = useState<Track[]>([])
+    const [playlists, setPlaylists] = useState<Playlist[]>([])
     const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
+    const [currentPlaylist, setCurrentPlaylist] = useState<Playlist | null>(null)
     const [isPlaying, setIsPlaying] = useState(false)
     const [currentTime, setCurrentTime] = useState(0)
     const [duration, setDuration] = useState(0)
     const [volume, setVolumeState] = useState(0.8)
+    const [shuffle, setShuffle] = useState(false)
+    const [repeatMode, setRepeatMode] = useState<RepeatMode>("none")
+    const [isLoading, setIsLoading] = useState(false)
     const audioRef = useRef<HTMLAudioElement | null>(null)
 
     const addTracks = useCallback((newTracks: Track[]) => {
@@ -53,8 +75,9 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
         }
     }, [currentTrack])
 
-    const playTrack = useCallback((track: Track) => {
+    const playTrack = useCallback((track: Track, fromPlaylist: Playlist | null = null) => {
         setCurrentTrack(track)
+        setCurrentPlaylist(fromPlaylist)
         setIsPlaying(true)
         if (audioRef.current) {
             audioRef.current.src = track.url
@@ -75,18 +98,55 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     }, [isPlaying, currentTrack])
 
     const nextTrack = useCallback(() => {
-        if (!currentTrack || tracks.length === 0) return
-        const idx = tracks.findIndex(t => t.id === currentTrack.id)
-        const next = tracks[(idx + 1) % tracks.length]
-        playTrack(next)
-    }, [currentTrack, tracks, playTrack])
+        const activeTracks = currentPlaylist?.tracks || tracks
+        if (!currentTrack || activeTracks.length === 0) return
+
+        if (repeatMode === "one") {
+            playTrack(currentTrack, currentPlaylist)
+            return
+        }
+
+        let next: Track
+        if (shuffle) {
+            const otherTracks = activeTracks.filter(t => t.id !== currentTrack.id)
+            if (otherTracks.length === 0) {
+               next = currentTrack
+            } else {
+               next = otherTracks[Math.floor(Math.random() * otherTracks.length)]
+            }
+        } else {
+            const idx = activeTracks.findIndex(t => t.id === currentTrack.id)
+            if (idx === activeTracks.length - 1) {
+                if (repeatMode === "all") {
+                    next = activeTracks[0]
+                } else {
+                    setIsPlaying(false)
+                    return
+                }
+            } else {
+                next = activeTracks[idx + 1]
+            }
+        }
+        playTrack(next, currentPlaylist)
+    }, [currentTrack, tracks, currentPlaylist, shuffle, repeatMode, playTrack])
 
     const prevTrack = useCallback(() => {
-        if (!currentTrack || tracks.length === 0) return
-        const idx = tracks.findIndex(t => t.id === currentTrack.id)
-        const prev = tracks[(idx - 1 + tracks.length) % tracks.length]
-        playTrack(prev)
-    }, [currentTrack, tracks, playTrack])
+        const activeTracks = currentPlaylist?.tracks || tracks
+        if (!currentTrack || activeTracks.length === 0) return
+
+        let prev: Track
+        const idx = activeTracks.findIndex(t => t.id === currentTrack.id)
+        if (idx <= 0) {
+            if (repeatMode === "all") {
+                prev = activeTracks[activeTracks.length - 1]
+            } else {
+                prev = activeTracks[0]
+            }
+        } else {
+            prev = activeTracks[idx - 1]
+        }
+        playTrack(prev, currentPlaylist)
+    }, [currentTrack, tracks, currentPlaylist, repeatMode, playTrack])
 
     const setVolume = useCallback((v: number) => {
         setVolumeState(v)
@@ -100,11 +160,38 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
         }
     }, [])
 
+    const toggleShuffle = () => setShuffle(!shuffle)
+
+    const playPlaylist = async (playlistId: string) => {
+        const playlist = playlists.find(p => p.id === playlistId)
+        if (!playlist) return
+        
+        setIsLoading(true)
+        try {
+            const { getPlaylistSongs } = await import("@/lib/database")
+            const playlistTracks = await getPlaylistSongs(playlistId)
+            const fullPlaylist = { ...playlist, tracks: playlistTracks }
+            
+            // Re-sync local playlists state with tracks
+            setPlaylists(prev => prev.map(p => p.id === playlistId ? fullPlaylist : p))
+            
+            if (playlistTracks.length > 0) {
+                playTrack(playlistTracks[0], fullPlaylist)
+            }
+        } catch (err) {
+            console.error("Failed to play playlist:", err)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     return (
         <MusicPlayerContext.Provider value={{
-            tracks, currentTrack, isPlaying, currentTime, duration, volume,
+            tracks, playlists, currentTrack, currentPlaylist, isPlaying, currentTime,
+            duration, volume, shuffle, repeatMode, isLoading,
             addTracks, removeTrack, playTrack, togglePlay, nextTrack, prevTrack,
-            setVolume, seekTo, audioRef
+            setVolume, seekTo, toggleShuffle, setRepeatMode, setPlaylists, playPlaylist,
+            audioRef
         }}>
             {children}
             <audio

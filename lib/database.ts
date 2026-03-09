@@ -469,3 +469,89 @@ export async function deleteRoom(roomId: string, hostId: string) {
         throw error
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MUSIC & PLAYLISTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all playlists for a specific user
+ */
+export async function getPlaylists(userId: string) {
+    const { data, error } = await supabase
+        .from("playlists")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+
+    if (error) throw error
+    return data || []
+}
+
+/**
+ * Create a new playlist
+ */
+export async function createPlaylist(userId: string, name: string) {
+    const { data, error } = await supabase
+        .from("playlists")
+        .insert([{ user_id: userId, name }])
+        .select()
+        .single()
+
+    if (error) throw error
+    return data
+}
+
+/**
+ * Add a song to a playlist
+ */
+export async function addSongToPlaylist(playlistId: string, songId: string) {
+    const { error } = await supabase
+        .from("playlist_songs")
+        .insert([{ playlist_id: playlistId, song_id: songId }])
+
+    if (error) throw error
+}
+
+/**
+ * Fetch all songs for a specific playlist
+ */
+export async function getPlaylistSongs(playlistId: string) {
+    const { data, error } = await supabase
+        .from("playlist_songs")
+        .select(`
+            id,
+            song_id,
+            music_library (*)
+        `)
+        .eq("playlist_id", playlistId)
+
+    if (error) throw error
+    
+    // Map to a cleaner structure
+    return (data || []).map((item: any) => item.music_library).filter(Boolean)
+}
+
+/**
+ * Delete a playlist
+ */
+export async function deletePlaylist(playlistId: string) {
+    const { error } = await supabase
+        .from("playlists")
+        .delete()
+        .eq("id", playlistId)
+
+    if (error) throw error
+}
+
+/**
+ * Remove a song from a playlist
+ */
+export async function removeSongFromPlaylist(playlistId: string, songId: string) {
+    const { error } = await supabase
+        .from("playlist_songs")
+        .delete()
+        .match({ playlist_id: playlistId, song_id: songId })
+
+    if (error) throw error
+}
