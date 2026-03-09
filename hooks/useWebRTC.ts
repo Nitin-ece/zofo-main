@@ -127,6 +127,7 @@ export function useWebRTC(
                 type,
                 senderId: userId,
                 senderName: userName,
+                senderSocketId: socket.id, // Tie-break for same-account testing
                 targetId,   // null = broadcast to all, string = targeted
                 data,
             });
@@ -425,8 +426,15 @@ export function useWebRTC(
         /**
          * Offer arbitration: the peer with the SMALLER userId string always sends
          * the offer. This prevents both peers from creating offers simultaneously.
+         * If userIds match (testing locally), use senderSocketId as a tie-breaker.
          */
-        const shouldBeOfferer = (peerId: string) => userId < peerId;
+        const shouldBeOfferer = (peerId: string, peerSocketId: string) => {
+            if (userId === peerId) {
+                // Same account testing: smaller socketId offers
+                return socket.id ? socket.id < peerSocketId : false;
+            }
+            return userId < peerId;
+        };
 
         const initSocket = async () => {
             if (!mountedRef.current) return;
@@ -455,10 +463,10 @@ export function useWebRTC(
             const onSignal = async (payload: any) => {
                 if (!mountedRef.current) return;
 
-                const { type, senderId, senderName, targetId, data } = payload;
+                const { type, senderId, senderName, senderSocketId, targetId, data } = payload;
 
                 // Ignore our own signals
-                if (senderId === userId) return;
+                if (senderId === userId && senderSocketId === socket.id) return;
 
                 // If this signal has a specific target and it's not us, ignore it
                 if (targetId && targetId !== userId) return;
@@ -472,8 +480,8 @@ export function useWebRTC(
                         return;
                     }
 
-                    if (shouldBeOfferer(senderId)) {
-                        console.log(`[WebRTC] We are the offerer for ${senderName}. Sending offer.`);
+                    if (shouldBeOfferer(senderId, senderSocketId)) {
+                        console.log(`[WebRTC] We are the offerer for ${senderName} (Socket: ${senderSocketId}). Sending offer.`);
                         const pc = createPeerConnection(senderId, senderName);
                         setIsConnecting(true);
                         try {

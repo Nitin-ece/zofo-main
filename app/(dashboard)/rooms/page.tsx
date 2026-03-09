@@ -106,7 +106,7 @@ export default function RoomsPage() {
     if (videoRef.current && localStream) {
       videoRef.current.srcObject = localStream;
     }
-  }, [localStream]);
+  }, [localStream, isVideoOn]);
 
   // Fetch live rooms on mount and subscribe to changes
   useEffect(() => {

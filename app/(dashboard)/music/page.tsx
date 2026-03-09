@@ -42,7 +42,12 @@ export default function MusicPage() {
                     }
                 } catch (err) {
                     console.error(err)
-                    toast.error("Failed to upload music: " + (err as Error).message)
+                    const msg = (err as any)?.message || "Unknown error";
+                    if (msg.includes("bucket_not_found") || msg.includes("Bucket not found")) {
+                        toast.error("Storage Error: The 'music' bucket does not exist. Please create a public 'music' bucket in your Supabase dashboard.")
+                    } else {
+                        toast.error("Failed to upload music: " + msg)
+                    }
                 }
             }
         }
