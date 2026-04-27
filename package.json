@@ -40,7 +40,6 @@
     "@radix-ui/react-tooltip": "1.2.8",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",
-    "@vercel/analytics": "1.6.1",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -49,7 +48,6 @@
     "embla-carousel-react": "8.6.0",
     "framer-motion": "^12.35.1",
     "input-otp": "1.4.2",
-    "lucide-react": "^0.564.0",
     "next": "16.1.6",
     "next-themes": "^0.4.6",
     "openai": "^6.27.0",
@@ -63,8 +61,7 @@
     "socket.io-client": "^4.8.3",
     "sonner": "^1.7.1",
     "tailwind-merge": "^3.3.1",
-    "vaul": "^1.1.2",
-    "zod": "^3.24.1"
+    "vaul": "^1.1.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.0",
